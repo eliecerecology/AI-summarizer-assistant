@@ -8,15 +8,11 @@ import tableparser
 from transformers import pipeline
 import boto3
 
-
 app = Flask(__name__)
 summa = pipeline("summarization")
 
-# datapath = "/home/helix/Documents/UNAIDS/Development/unaids/Demo/pdfs/" 
-
-datapath ='/home/helix/Documents/UNAIDS/Development/DemoFlask2/upload_folder/'
+datapath ='/home/helix/Documents/UNAIDS/code/DemoFlask2/upload_folder/'
 pdfnames = os.listdir(datapath)
-
 
 # Defining the home page of our site
 @app.route("/")  # this sets the route to this page
@@ -46,9 +42,6 @@ def table_change(photo):
     #tableparser.main_conv('/home/helix/Documents/UNAIDS/Development/DemoFlask2/tables_folder/'+photo)
     return render_template("table_output.html", path = path)
        
-
-
-
 @app.route("/login", methods=["POST", "GET"])
 def login():
     if request.method == "POST":
