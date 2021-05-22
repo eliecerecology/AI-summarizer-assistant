@@ -7,7 +7,7 @@
     <p> Text extraction original: </p>
 	<ol>
         <!-- For loop logic of jinja template -->
-        {%for i in range(0, 1)%}
+        {%for i in range(0, 4)%}
           
             <li>{{text[i]}}</li>
         {%endfor%}
@@ -19,7 +19,7 @@
 
     <ol>
         <!-- For loop logic of jinja template -->
-        {%for i in range(0, 1)%}
+        {%for i in range(0, 4)%}
           
             <li>{{text1[i]}}</li>
         {%endfor%}
@@ -27,6 +27,21 @@
         </ol>
     </form>
 
-    {% endblock %}
+    <form action="#" method="post">
 
+        <body>
+
+            <h1>Snetiment Analysis</h1>
+    
+            <img src={{plot}} alt="Chart" height="auto" width="20%">
+        </body>
+
+        
+    </form>
+
+
+
+    {% endblock %}
+    
+    
 
