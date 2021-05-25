@@ -10,10 +10,18 @@ import tableparser
 from transformers import pipeline
 import boto3
 import matplotlib.pyplot as plt
+import pymongo
+
+
 
 app = Flask(__name__)
 pop_df = None
 location_list = None
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["SummariesDB"]
+mycol = mydb["summaries"]
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -51,9 +59,7 @@ def tables():
     
         tabl = request.files["tabla"]
         tabl.save(os.path.join('static/images/', tabl.filename))
-        #tabl.save(os.path.join('tables_folder', tabl.filename))
         photonames = os.listdir('static/images/')
-        #photonames = os.listdir('/home/helix/Documents/UNAIDS/Development/DemoFlask2/tables_folder/')
         
         return redirect(url_for("table_change", photo = photonames[0]))
     else:
@@ -64,7 +70,7 @@ def tables():
 def table_change(photo):
     path = 'static/images/'+photo
     tableparser.main_conv('static/images/'+photo)
-    #tableparser.main_conv('/home/helix/Documents/UNAIDS/Development/DemoFlask2/tables_folder/'+photo)
+    
     return render_template("table_output.html", path = path)
        
 @app.route("/login", methods=["POST", "GET"])
@@ -103,39 +109,13 @@ def user(usr, usr1):
           print(i)
     print("finish!")
 
-    label = []
-    score = []
+    #Uploading data to mongoDB
     for i in summaries:
-        label = []
-    score = []
-    for i in summaries:
-    
-        result = sentiment_analysis((i[0]['summary_text']))[0]
-        label.append(result['label'])
-        score.append(result['score'])   
-    
-    data_tuples = list(zip(label,score))
-    df = pd.DataFrame(data_tuples, columns=['label','score'])
+        x = mycol.insert_one(i[0])
 
-    posit = df[df["label"] == "POSITIVE"]
-    negat = df[df["label"] == "NEGATIVE"]
-    means = [posit['score'].mean(), negat['score'].mean() ]
-    labe = ["POSITIVE", "NEGATIVE"]
-
-    fig = plt.figure()
-
-
-    ax = fig.add_axes([1,1,1,1])
-    ax.set_ylim([0,1])
-    ax.bar(labe, means)
-    ax.set_xlabel("sentiment")
-    ax.set_title("Article 2")
-    ax.set_ylabel("Mean score Latin America")
     
 
-    plt.savefig('static/images/plot.png')
-
-    return render_template("base1.html", text = lista, text1 = summaries, plot = "static/images/plot.png")
+    return render_template("base1.html", text = lista, text1 = summaries)
 
 @app.route("/quantitive", methods=['POST', 'GET'])
 def build_pyramid():
@@ -157,9 +137,7 @@ def build_pyramid():
     x_female = pop_df_tmp['PopFemale']
 
 	# max xlim
-    #max_x_scale = max(max(x_female), max(x_male))
     fig = plt.figure(figsize=(22, 20))
-    #fig, (axes1, axes2) = plt.subplots(nrows = 1, ncols =2, sharey=True, figsize=(22, 20))
     
     fig.patch.set_facecolor('xkcd:white')
     plt.figtext(.5,.9,selected_country + ": " +  str(selected_year), fontsize=15, ha='center')
@@ -168,14 +146,17 @@ def build_pyramid():
     	
     axes1.barh(y, x_male, align='center', color='lightblue')
     axes1.set(title='Males')
-    #axes[0].set(xlim=[0,max_x_scale])
+    
     axes2 = fig.add_subplot(222)
     axes2.barh(y, x_female, align='center', color='pink')
     axes2.set(title='Females')
-    #axes[1].set(xlim=[0,max_x_scale])
     axes2.grid()
+    axes1.set_ylabel('Age class')
+    axes1.set_xlabel('Number of people')
+    axes2.set_xlabel('Number of people')
     		
     axes1.set(yticks=y, yticklabels=pop_df_tmp['AgeGrp'])
+    axes2.set(yticks=y, yticklabels=pop_df_tmp['AgeGrp'])
     axes1.invert_xaxis()
     axes1.grid()	
     
@@ -205,6 +186,7 @@ def build_pyramid():
                     ep_data.loc[ind,str(year)] = math.nan
             else:
                 ep_data.loc[ind,str(year)] = math.nan
+    
     axes3 = fig.add_subplot(223)
     axes3.set_xlim(0,1500)
     axes3.set_ylim(0,175000)
@@ -236,7 +218,40 @@ def build_pyramid():
     axes3.set_xlabel('Expenditures on HIV prevention (millions USD)')
     axes3.set_ylabel('Number of people living with HIV')
 
+    # Sentiment analyses
+    stuff = mycol.find()
+    summaries = []
+    for i in stuff:
+        summaries.append(i)
     
+
+    label = []
+    score = []
+    
+    for i in summaries:
+    
+        result = sentiment_analysis((i['summary_text']))[0]
+        label.append(result['label'])
+        score.append(result['score'])   
+    
+    data_tuples = list(zip(label,score))
+    df = pd.DataFrame(data_tuples, columns=['label','score'])
+
+    posit = df[df["label"] == "POSITIVE"]
+    negat = df[df["label"] == "NEGATIVE"]
+    means = [posit['score'].mean(), negat['score'].mean() ]
+    labe = ["POSITIVE", "NEGATIVE"]
+
+    
+    
+    axes4 = fig.add_subplot(224)
+    
+    axes4.set_ylim([0,1])
+    axes4.bar(labe, means)
+    axes4.set_xlabel("sentiment")
+    axes4.set_title("Article uploaded")
+    axes4.set_ylabel("Mean score")
+
 		
     img = io.BytesIO()
 		
@@ -248,9 +263,7 @@ def build_pyramid():
 		
     plot_to_show = Markup('<img src="data:image/png;base64,{}" style="width:100%;vertical-align:top">'.format(plot_url))
     
-    #plot_to_show1 = k_function(selected_country)
-
-    
+        
     return render_template('build-a-pyramid.html',
             plot_to_show = plot_to_show,
             #plot_to_show1 = plot_to_show1,
