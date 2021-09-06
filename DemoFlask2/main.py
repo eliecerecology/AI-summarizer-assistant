@@ -11,8 +11,7 @@ from transformers import pipeline
 import boto3
 import matplotlib.pyplot as plt
 import pymongo
-
-
+import datetime
 
 app = Flask(__name__)
 pop_df = None
@@ -52,6 +51,10 @@ def get_poulation_pyramid(country, year):
 def home():
      return render_template("base.html",)  # some basic inline html
 
+@app.route("/integration")  # this sets the route to this page
+def integration():
+     return render_template("integration.html",)  # some basic inline html
+
 @app.route("/tables", methods=["POST", "GET"])
 def tables():
        
@@ -90,16 +93,19 @@ def keywords():
        
         user = request.form["keyword"]
         user1 = request.form["keyword2"]
-        return redirect(url_for("user", usr = user, usr1 = user1))
+        country = request.form["country"]
+        return redirect(url_for("user", usr = user, usr1 = user1, country = country))
             
     else:
         return render_template("keywords.html")
 
-@app.route("/<usr>, <usr1>")
-def user(usr, usr1):
+@app.route("/<usr>, <usr1>,<country>")
+def user(usr, usr1, country):
+    datapath ='./upload_folder/'
     paragraphs = pdf_parse_functions.pdf_parser(datapath+pdfnames[0])
     paragraphs_with_key_words = pdf_parse_functions.get_paragraphs_with_key_words(paragraphs, (usr, usr1, "sex"))
     global summaries
+    
     lista = []
     summaries = []
     for i in range(0,len(paragraphs_with_key_words)):
@@ -107,23 +113,35 @@ def user(usr, usr1):
           
           summaries.append(summa(paragraphs_with_key_words[i]['text'])) #remove this for demo
           print(i)
+          break # only to speed up
     print("finish!")
 
     #Uploading data to mongoDB
     for i in summaries:
         x = mycol.insert_one(i[0])
+        break # to speed up
+
+    #use database named "organisation"
+    thedb = myclient["resumenesDB"]
+    collection = thedb["resumenes"]
+
+    
+    date = datetime.datetime.now()
+    
+    x = collection.insert_one({"country": country, "time": date, "summary": i})
 
     
 
     return render_template("base1.html", text = lista, text1 = summaries)
 
-@app.route("/quantitive", methods=['POST', 'GET'])
+@app.route("/quantitive/", methods=['POST', 'GET'])
 def build_pyramid():
     plot_to_show = ''
     selected_country = ''
     country_list = ''
     selected_year = ''
     plot_to_show1 = ''
+    
 	
     if request.method == 'POST':
 	    selected_country = request.form['selected_country']
@@ -139,43 +157,53 @@ def build_pyramid():
 	# max xlim
     fig = plt.figure(figsize=(22, 20))
     
-    fig.patch.set_facecolor('xkcd:white')
-    plt.figtext(.5,.9,selected_country + ": " +  str(selected_year), fontsize=15, ha='center')
-
+    #fig.patch.set_facecolor('xkcd:white')
+    plt.figtext(.5,.9,selected_country + ": " +  str(selected_year), fontsize=35, ha='center')
+    
     axes1 = fig.add_subplot(221)
     	
-    axes1.barh(y, x_male, align='center', color='lightblue')
+    axes1.barh(y, x_male, align='center', color='blue')
+    axes1.tick_params(axis='x', labelsize=18)
+    axes1.tick_params(axis='y', labelsize=18)
     axes1.set(title='Males')
     
     axes2 = fig.add_subplot(222)
-    axes2.barh(y, x_female, align='center', color='pink')
+    axes2.barh(y, x_female, align='center', color='red')
     axes2.set(title='Females')
+    
+    axes1.set_ylabel('Age class', size = 20)
+    axes1.set_xlabel('Number of people', fontsize = 20)
+    axes2.set_xlabel('Number of people', size = 20)
+    axes2.tick_params(axis='x', labelsize=18)
+    axes2.tick_params(axis='y', labelsize=18)
     axes2.grid()
-    axes1.set_ylabel('Age class')
-    axes1.set_xlabel('Number of people')
-    axes2.set_xlabel('Number of people')
-    		
+
     axes1.set(yticks=y, yticklabels=pop_df_tmp['AgeGrp'])
     axes2.set(yticks=y, yticklabels=pop_df_tmp['AgeGrp'])
-    axes1.invert_xaxis()
+    axes1.invert_xaxis() 
     axes1.grid()	
-    
-    ################KK
+
+    ##################################
+    ################FINANCIAL
+    ##################################
     datapath = "/home/helix/Documents/UNAIDS/Data_sources/"
     lawsfile = "NCPI_2020_en.csv"
+    # key populations data
     kpfile = "KPAtlasDB_2020_en.csv"
     column_names=('Indicator','Unit','Subgroup','Area','Area ID','Time Period','Source','Data Value')
-    kp_data = pd.read_csv(datapath+kpfile,usecols=column_names)
+    kp_data = pd.read_csv(datapath+kpfile, usecols = column_names)
+    # NEEDED
     expenditfile = "GARPR16-GAM2020ProgrammeExpenditures.xlsx"
     ex_data = pd.read_excel(datapath+expenditfile)
     ex_data.rename(columns=dict(zip(ex_data.columns[1:10],[str(int(a)) for a in ex_data.iloc[3,1:10]])),inplace=True)
     ex_data.rename(columns={'Reporting cycle':'Countries','Unnamed: 10':'Total'},inplace=True)
     ex_data.drop(labels=[0,1,2,3],axis='index',inplace=True)
-    ex_data.reset_index(drop=True)
+    ex_data = ex_data.reset_index(drop=True)
 
     # epidemic transition metrics
-    epidemicfile = "NewHIVinfections.xlsx"
+    epidemicfile = "PeopleLivingWithHIV.xlsx"
     ep_data = pd.read_excel(datapath+epidemicfile, dtype=str)
+
     for year in range(2011,2020):
         for ind in ep_data.index:
             if len(ep_data.loc[ind,str(year)]) > 0:
@@ -186,39 +214,51 @@ def build_pyramid():
                     ep_data.loc[ind,str(year)] = math.nan
             else:
                 ep_data.loc[ind,str(year)] = math.nan
-    
-    axes3 = fig.add_subplot(223)
-    axes3.set_xlim(0,1500)
-    axes3.set_ylim(0,175000)
 
     data = {}
     for country in ex_data['Countries']:
-        
         data[country] = {'years':[],'epdata':[],'exdata':[]}    
         for year in range(2011,2020):
-            #ep_data[str(year)] = ep_data[str(year)].apply(lambda x: int(re.findall(r"^\d+\s\d*",x)[0].replace(" ","")) 
-            #            if len(x)>0 and re.findall(r"^\d+\s\d*",x)
-            #            else None)
-
-            x = ex_data.loc[ex_data['Countries']==country,str(year)].values
-            y = ep_data.loc[ep_data['Country']==country,str(year)].values
+            
+            x = ex_data.loc[ex_data['Countries'] == country,str(year)].values
+            y = ep_data.loc[ep_data['Country'] == country,str(year)].values
             if x and y and not ( math.isnan(x) or math.isnan(y) ):
                 data[country]['years'].append(year)
                 data[country]['epdata'].append(y)
                 data[country]['exdata'].append(x/1000000)
 
-    for country in data:
+    # for country in data:
+    new = pd.DataFrame([])
+    for country in ex_data['Countries']:
+        #print(country)
+        ne = pd.DataFrame.from_dict(data[country])
+        ne['country'] = country
+        ne['epdata'] = ne['epdata'].map(lambda x: float(x))
+        ne['exdata'] = ne['exdata'].map(lambda x: float(x))
+        ne['years'] =  ne['years'].astype(int)
+    
+        new = pd.concat([new, ne], axis=0)
+    
+    country = selected_country
+    #print(selected_country)
+    data = new[new['country'] == country]
+    data['epdata'] = data['epdata']/1000
+    
+    axes4 = fig.add_subplot(224)
+    axes4.plot(data.iloc[:, 2], data.iloc[:, 1])
+    #axes4.plot(data.iloc[0, 2], data.iloc[0, 1], 'bo', markersize=20)
+    #axes4.plot(data.iloc[1:len(data)-1, 2], data.iloc[1:len(data)-1, 1], 'go',markersize=20)
+    #axes4.plot(data.iloc[len(data)-1, 2], data.iloc[len(data)-1, 1], 'ro', markersize=20)
+    for i in range(0,len(data)):
+        axes4.text(data.iloc[i, 2], data.iloc[i, 1], data.iloc[i, 0], size = 15)
         
-        if len(data[country]['exdata']) > 0 and len(data[country]['epdata']) > 0:
-            axes3.plot(data[country]['exdata'],data[country]['epdata'])
-            axes3.plot(data[country]['exdata'][-1],data[country]['epdata'][-1],'ro')
-            axes3.text(data[country]['exdata'][-1],data[country]['epdata'][-1],country)
-
-        
-    axes3.set_xlabel('Expenditures on HIV prevention (millions USD)')
-    axes3.set_ylabel('Number of people living with HIV')
-
+    axes4.set_xlabel('USD expenditures on HIV prevention [million]',size = 20)
+    axes4.set_ylabel('Number of people living with HIV [million]', size = 20)
+    axes4.set_title(country, size =22)
+    
+    ############################
     # Sentiment analyses
+    ############################
     stuff = mycol.find()
     summaries = []
     for i in stuff:
@@ -241,18 +281,13 @@ def build_pyramid():
     negat = df[df["label"] == "NEGATIVE"]
     means = [posit['score'].mean(), negat['score'].mean() ]
     labe = ["POSITIVE", "NEGATIVE"]
-
-    
-    
-    axes4 = fig.add_subplot(224)
-    
-    axes4.set_ylim([0,1])
-    axes4.bar(labe, means)
-    axes4.set_xlabel("sentiment")
-    axes4.set_title("Article uploaded")
-    axes4.set_ylabel("Mean score")
-
-		
+   
+    axes3 = fig.add_subplot(223)
+    axes3.set_ylim([0,1])
+    axes3.bar(labe, means)
+    axes3.set_title("Sentiment",size = 20)
+    axes3.set_ylabel("Mean score",size = 20)
+	
     img = io.BytesIO()
 		
     plt.savefig(img, format='png')
@@ -263,18 +298,27 @@ def build_pyramid():
 		
     plot_to_show = Markup('<img src="data:image/png;base64,{}" style="width:100%;vertical-align:top">'.format(plot_url))
     
+    # get from MongoDB
+    #use database named "organisation"
+    thedb = myclient["resumenesDB"]
+
+    collection = thedb["resumenes"]
+    cursorII = collection.find().limit(1).sort([('summary',-1)])
+
+    for record in cursorII: 
+        summary = (record["summary"][0]["summary_text"])
+        break
+
+
+
         
     return render_template('build-a-pyramid.html',
             plot_to_show = plot_to_show,
-            #plot_to_show1 = plot_to_show1,
             selected_country = selected_country,
             location_list = location_list,
-            selected_year = selected_year)
-
-
-
-
-
+            selected_year = selected_year, 
+            summary = summary
+            )
     
 if __name__ == "__main__":
     app.run(debug=True, port=5001, threaded=True)
