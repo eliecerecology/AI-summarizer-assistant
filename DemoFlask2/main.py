@@ -312,7 +312,6 @@ def build_pyramid():
             break
 
 
-
         
     return render_template('build-a-pyramid.html',
             plot_to_show = plot_to_show,
