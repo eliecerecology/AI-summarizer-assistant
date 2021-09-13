@@ -10,17 +10,18 @@ import tableparser
 from transformers import pipeline
 import boto3
 import matplotlib.pyplot as plt
-import pymongo
+from pymongo import MongoClient
 import datetime
+import shutil
 
 app = Flask(__name__)
 pop_df = None
 location_list = None
 
-myclient = pymongo.MongoClient("mongodb://localhost:27017/")
-mydb = myclient["SummariesDB"]
-mycol = mydb["summaries"]
-
+client = MongoClient("mongodb://localhost:27017/")
+mydatabase = client["resumenesDB"]
+mydatabase.list_collection_names()
+mycollection = mydatabase["test"]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -28,7 +29,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 summa = pipeline("summarization")
 sentiment_analysis = pipeline('sentiment-analysis')
 
-datapath ='/home/helix/Documents/UNAIDS/code/DemoFlask2/upload_folder/'
+datapath ='./upload_folder/'
 pdfnames = os.listdir(datapath)
 summaries = []
 
@@ -99,38 +100,34 @@ def keywords():
     else:
         return render_template("keywords.html")
 
-@app.route("/<usr>, <usr1>,<country>")
+@app.route("/<usr>, <usr1>, <country>")
 def user(usr, usr1, country):
     datapath ='./upload_folder/'
+    pdfnames = os.listdir(datapath)
+    
     paragraphs = pdf_parse_functions.pdf_parser(datapath+pdfnames[0])
     paragraphs_with_key_words = pdf_parse_functions.get_paragraphs_with_key_words(paragraphs, (usr, usr1, "sex"))
-    global summaries
-    
+        
     lista = []
     summaries = []
     for i in range(0,len(paragraphs_with_key_words)):
-          lista.append(paragraphs_with_key_words[i]['text'])
-          
-          summaries.append(summa(paragraphs_with_key_words[i]['text'])) #remove this for demo
-          print(i)
-          break # only to speed up
+        lista.append(paragraphs_with_key_words[i]['text'])
+        summaries.append(summa(paragraphs_with_key_words[i]['text'])) #remove this for demo
+        print(i)
+       
+
     print("finish!")
-
+    
     #Uploading data to mongoDB
-    for i in summaries:
-        x = mycol.insert_one(i[0])
-        break # to speed up
-
+    
     #use database named "organisation"
-    thedb = myclient["resumenesDB"]
-    collection = thedb["resumenes"]
-
+    for summary in summaries:
+        date = datetime.datetime.now()
+        mycollection.insert_one({"country": country, "time": date,  "summary": summary[0]["summary_text"]})
     
-    date = datetime.datetime.now()
-    
-    x = collection.insert_one({"country": country, "time": date, "summary": i})
-
-    
+    dirpath = 'upload_folder'
+    shutil.rmtree(dirpath)
+    os.mkdir(dirpath)
 
     return render_template("base1.html", text = lista, text1 = summaries)
 
@@ -259,7 +256,8 @@ def build_pyramid():
     ############################
     # Sentiment analyses
     ############################
-    stuff = mycol.find()
+    stuff = mycollection.find()
+    
     summaries = []
     for i in stuff:
         summaries.append(i)
@@ -267,14 +265,17 @@ def build_pyramid():
 
     label = []
     score = []
-    
     for i in summaries:
+        try:
+            result = sentiment_analysis((i['summary']))[0]
+            #print(j)
+            #print(result)
+            label.append(result['label'])
+            score.append(result['score']) 
+        except:
+            pass  
     
-        result = sentiment_analysis((i['summary_text']))[0]
-        label.append(result['label'])
-        score.append(result['score'])   
-    
-    data_tuples = list(zip(label,score))
+    data_tuples = list(zip(label, score))
     df = pd.DataFrame(data_tuples, columns=['label','score'])
 
     posit = df[df["label"] == "POSITIVE"]
@@ -300,14 +301,15 @@ def build_pyramid():
     
     # get from MongoDB
     #use database named "organisation"
-    thedb = myclient["resumenesDB"]
+    cursorII = mycollection.find()
 
-    collection = thedb["resumenes"]
-    cursorII = collection.find().limit(1).sort([('summary',-1)])
-
+    j = 0
+    syntheses = []
     for record in cursorII: 
-        summary = (record["summary"][0]["summary_text"])
-        break
+        syntheses.append(record["summary"])
+        j += 1
+        if j == 5:
+            break
 
 
 
@@ -317,7 +319,7 @@ def build_pyramid():
             selected_country = selected_country,
             location_list = location_list,
             selected_year = selected_year, 
-            summary = summary
+            summary = syntheses
             )
     
 if __name__ == "__main__":
