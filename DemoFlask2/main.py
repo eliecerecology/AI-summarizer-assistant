@@ -238,7 +238,7 @@ def build_pyramid():
     
     country = selected_country
     #print(selected_country)
-    data = new[new['country'] == country]
+    data = new[new['country'] == selected_country]
     data['epdata'] = data['epdata']/1000
     
     axes4 = fig.add_subplot(224)
@@ -256,7 +256,7 @@ def build_pyramid():
     ############################
     # Sentiment analyses
     ############################
-    stuff = mycollection.find()
+    stuff = mycollection.find({"country": selected_country})
     
     summaries = []
     for i in stuff:
@@ -301,12 +301,13 @@ def build_pyramid():
     
     # get from MongoDB
     #use database named "organisation"
-    cursorII = mycollection.find()
+    cursorII = mycollection.find({"country": selected_country})
 
     j = 0
     syntheses = []
     for record in cursorII: 
         syntheses.append(record["summary"])
+        print(record["summary"])
         j += 1
         if j == 5:
             break
