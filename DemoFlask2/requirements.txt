@@ -1,0 +1,11 @@
+Flask
+pandas
+Counter
+transformers
+boto3
+matplotlib
+pymongo
+fitz
+spacy
+
+Counter
