@@ -18,7 +18,7 @@ app = Flask(__name__)
 pop_df = None
 location_list = None
 
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient("mongodb://host.docker.internal:27017/")
 mydatabase = client["resumenesDB"]
 mydatabase.list_collection_names()
 mycollection = mydatabase["test"]
